@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhyViA - Chẩn đoán bệnh lá cây</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js render Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- html2pdf.js xuất báo cáo PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Cropper.js cắt ảnh -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        .markdown-body h3 { font-size: 1.1rem; font-weight: 700; margin-top: 1rem; color: #15803d; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; }
+        .markdown-body p { margin-top: 0.5rem; line-height: 1.6; color: #334155; }
+        .markdown-body strong { color: #166534; }
+        .markdown-body table { width: 100%; margin-top: 0.75rem; border-collapse: collapse; }
+        .markdown-body th, .markdown-body td { border: 1px solid #e2e8f0; padding: 8px 12px; font-size: 0.875rem; }
+        .markdown-body th { background-color: #f1f5f9; color: #1e293b; font-weight: 600; }
+        
+        .cropper-container-wrapper {
+            max-height: 320px;
+            overflow: hidden;
+            background-color: #000;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 transition-colors duration-300">
+
+    <!-- Header Sáng -->
+    <header class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="bg-emerald-100 p-2.5 rounded-xl border border-emerald-200">
+                    <i class="fa-solid fa-leaf text-2xl text-emerald-600"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide text-slate-900">PhyViA - Phyleaf Vision AI</h1>
+                    <p class="text-xs text-slate-500">Chẩn đoán bệnh lá cây miễn phí</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-bolt text-emerald-500"></i> Free AI Vision Model
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <!-- Cột trái: Chọn ảnh / Camera / Crop -->
+        <section class="lg:col-span-5 bg-white p-6 rounded-2xl shadow-md border border-slate-200 flex flex-col justify-between">
+            <div>
+                <h2 class="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-up text-emerald-600"></i> Tải hoặc Chụp ảnh lá cây
+                </h2>
+                <p class="text-xs text-slate-500 mb-4">Chụp rõ vết bệnh trên lá để AI phân tích chuẩn xác.</p>
+
+                <!-- Khung Tải ảnh -->
+                <div id="dropZone" class="border-2 border-dashed border-slate-300 rounded-xl p-2 text-center relative bg-slate-50 hover:bg-slate-100/80 transition min-h-[280px] flex flex-col items-center justify-center overflow-hidden">
+                    <input type="file" id="imageInput" accept="image/jpeg, image/png, image/webp" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
+                    
+                    <!-- Chưa chọn ảnh -->
+                    <div id="uploadPlaceholder" class="space-y-3 z-0 p-4">
+                        <div class="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-200 shadow-sm">
+                            <i class="fa-solid fa-image text-xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700">Nhấn vào đây để chọn ảnh lá cây</p>
+                            <p class="text-xs text-slate-400 mt-1">Hỗ trợ PNG, JPG, WEBP</p>
+                        </div>
+                    </div>
+
+                    <!-- Camera Stream -->
+                    <div id="cameraContainer" class="hidden relative w-full h-full z-20 flex flex-col items-center">
+                        <video id="webcam" autoplay playsinline class="w-full max-h-64 object-cover rounded-lg shadow-inner bg-black"></video>
+                        <div class="mt-3 flex flex-wrap justify-center gap-2">
+                            <button onclick="capturePhoto()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg font-semibold flex items-center gap-1.5 shadow transition">
+                                <i class="fa-solid fa-camera"></i> Chụp Ảnh
+                            </button>
+                            <button onclick="stopCamera()" class="bg-slate-400 hover:bg-slate-500 text-white text-xs px-3 py-2 rounded-lg font-semibold transition">
+                                Hủy
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Cropper -->
+                    <div id="cropContainer" class="hidden z-20 w-full flex flex-col items-center">
+                        <div class="cropper-container-wrapper w-full rounded-lg">
+                            <img id="cropImage" class="max-w-full" alt="Cắt ảnh">
+                        </div>
+                        <div class="mt-3 flex gap-2">
+                            <button onclick="applyCrop()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg 
+                            font-semibold flex items-center gap-1.5 shadow">
+                                <i class="fa-solid fa-check"></i> Xác Nhận Cắt
+                            </button>
+                            <button onclick="cancelCrop()" class="bg-slate-400 hover:bg-slate-500 text-white text-xs px-3 py-2 rounded-lg font-semibold">
+                                Hủy Cắt
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Preview -->
+                    <div id="previewContainer" class="hidden relative z-20 w-full">
+                        <img id="imagePreview" class="max-h-64 mx-auto rounded-lg shadow-md object-contain border border-slate-200 bg-white" alt="Ảnh xem trước">
+                        <button onclick="removeImage(event)" class="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition z-30">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Các tùy chọn -->
+                <div class="mt-3 space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="startCamera()" id="openCameraBtn" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 border border-emerald-200 transition">
+                            <i class="fa-solid fa-video text-emerald-600"></i> Bật Camera
+                        </button>
+                        <button onclick="startCropMode()" id="cropBtn" disabled class="bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 border border-amber-200 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-crop-simple text-amber-600"></i> Cắt Vùng Bệnh
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button onclick="analyzePlantDisease()" id="analyzeBtn" 
+                    class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Phân Tích 
+                </button>
+            </div>
+        </section>
+
+        <!-- Cột phải: Kết quả -->
+        <section class="lg:col-span-7 bg-white p-6 rounded-2xl shadow-md border border-slate-200 flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+                <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-clipboard-list text-emerald-600"></i> Kết Quả Chẩn Đoán Chi Tiết
+                </h2>
+                <span id="statusBadge" class="text-xs px-3 py-1 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200">Chờ tải ảnh...</span>
+            </div>
+
+            <div id="resultContainer" class="flex-1 flex flex-col justify-center items-center text-center p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/60 min-h-[320px]">
+                <div id="initialState" class="space-y-3">
+                    <div class="w-16 h-16 bg-white text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-200 shadow-sm">
+                        <i class="fa-solid fa-robot text-2xl text-emerald-500"></i>
+                    </div>
+                    <p class="text-sm font-medium text-slate-600">Tải ảnh lên và bấm "Phân Tích "</p>
+                </div>
+
+                <div id="loadingState" class="hidden space-y-4">
+                    <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-600 border-t-transparent"></div>
+                    <p class="text-sm font-semibold text-emerald-800 animate-pulse">AI đang phân tích triệu chứng vết bệnh trên lá...</p>
+                </div>
+
+                <div id="outputContent" class="hidden text-left w-full markdown-body overflow-y-auto max-h-[500px] pr-2 text-slate-800"></div>
+            </div>
+
+            <div class="mt-4 flex justify-between items-center text-xs text-slate-500 pt-3 border-t border-slate-100">
+                <button onclick="copyResult()" id="copyBtn" class="hidden hover:text-emerald-700 flex items-center gap-1 font-medium transition">
+                    <i class="fa-regular fa-copy"></i> Sao chép kết quả
+                </button>
+                <button onclick="exportPDF()" id="pdfBtn" class="hidden bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-file-pdf text-red-600"></i> Xuất Báo Cáo PDF
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <canvas id="captureCanvas" class="hidden"></canvas>
+
+    <script>
+        // =========================================================================
+        // DÁN OPENROUTER API KEY CỦA BẠN (DẠNG sk-or-v1-...) VÀO ĐÂY:
+        // =========================================================================
+        const OPENROUTER_API_KEY = "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"; 
+
+        let selectedDataUrl = null;
+        let originalImageSrc = null;
+        let mediaStream = null;
+        let cropper = null;
+
+        async function startCamera() {
+            if (cropper) cancelCrop();
+            document.getElementById('uploadPlaceholder').classList.add('hidden');
+            document.getElementById('previewContainer').classList.add('hidden');
+            document.getElementById('imageInput').classList.add('hidden');
+            
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                const video = document.getElementById('webcam');
+                video.srcObject = mediaStream;
+                document.getElementById('cameraContainer').classList.remove('hidden');
+            } catch (err) {
+                alert('Không mở được camera!');
+                stopCamera();
+            }
+        }
+
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            document.getElementById('cameraContainer').classList.add('hidden');
+            document.getElementById('imageInput').classList.remove('hidden');
+            
+            if (!selectedDataUrl) {
+                document.getElementById('uploadPlaceholder').classList.remove('hidden');
+            } else {
+                document.getElementById('previewContainer').classList.remove('hidden');
+            }
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('webcam');
+            const canvas = document.getElementById('captureCanvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            originalImageSrc = canvas.toDataURL('image/jpeg', 0.90);
+            setFinalImage(originalImageSrc);
+            stopCamera();
+        }
+
+        function startCropMode() {
+            if (!originalImageSrc) return;
+
+            document.getElementById('previewContainer').classList.add('hidden');
+            document.getElementById('uploadPlaceholder').classList.add('hidden');
+            document.getElementById('imageInput').classList.add('hidden');
+            
+            const cropImgElement = document.getElementById('cropImage');
+            cropImgElement.src = originalImageSrc;
+            document.getElementById('cropContainer').classList.remove('hidden');
+
+            if (cropper) cropper.destroy();
+            cropper = new Cropper(cropImgElement, { viewMode: 1, autoCropArea: 0.8 });
+        }
+
+        function applyCrop() {
+            if (!cropper) return;
+            const croppedCanvas = cropper.getCroppedCanvas({ maxWidth: 1024, maxHeight: 1024 });
+            if (croppedCanvas) {
+                const croppedDataUrl = croppedCanvas.toDataURL('image/jpeg', 0.88);
+                setFinalImage(croppedDataUrl);
+            }
+            cancelCrop();
+        }
+
+        function cancelCrop() {
+            if (cropper) { cropper.destroy(); cropper = null; }
+            document.getElementById('cropContainer').classList.add('hidden');
+            document.getElementById('imageInput').classList.remove('hidden');
+            if (selectedDataUrl) {
+                document.getElementById('previewContainer').classList.remove('hidden');
+            } else {
+                document.getElementById('uploadPlaceholder').classList.remove('hidden');
+            }
+        }
+
+        function setFinalImage(dataUrl) {
+            selectedDataUrl = dataUrl;
+            document.getElementById('imagePreview').src = dataUrl;
+            document.getElementById('uploadPlaceholder').classList.add('hidden');
+            document.getElementById('previewContainer').classList.remove('hidden');
+            document.getElementById('cropBtn').disabled = false;
+            document.getElementById('statusBadge').innerText = "Sẵn sàng phân tích";
+        }
+
+        const imageInput = document.getElementById('imageInput');
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                stopCamera();
+                if (cropper) cancelCrop();
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    originalImageSrc = event.target.result;
+                    setFinalImage(originalImageSrc);
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function removeImage(event) {
+            if(event) event.stopPropagation();
+            if (cropper) cancelCrop();
+            selectedDataUrl = null;
+            originalImageSrc = null;
+            imageInput.value = '';
+            document.getElementById('previewContainer').classList.add('hidden');
+            document.getElementById('uploadPlaceholder').classList.remove('hidden');
+            document.getElementById('cropBtn').disabled = true;
+            document.getElementById('statusBadge').innerText = "Chờ tải ảnh...";
+        }
+
+        // --- GỌI OPENROUTER VISION API MIỄN PHÍ TỰ ĐỘNG ROUTER ---
+        async function analyzePlantDisease() {
+            if (!OPENROUTER_API_KEY || !OPENROUTER_API_KEY.startsWith('sk-or-v1-')) {
+                alert('Vui lòng dán đúng OpenRouter API Key bắt đầu bằng "sk-or-v1-..." vào dòng 220!');
+                return;
+            }
+
+            if (!selectedDataUrl) {
+                alert('Vui lòng chọn ảnh lá cây trước!');
+                return;
+            }
+
+            document.getElementById('initialState').classList.add('hidden');
+            document.getElementById('outputContent').classList.add('hidden');
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('statusBadge').innerText = "Đang phân tích...";
+
+            const expertPrompt = `Bạn là Chuyên gia Bảo vệ Thực vật Việt Nam. Phân tích ảnh lá cây này và trả lời theo cấu trúc Markdown sau:
+### 1. Tên loài cây
+• Tên tiếng Việt và tên khoa học.
+
+### 2. Chẩn đoán bệnh lý
+• Tên bệnh/tác nhân chi tiết.
+
+### 3. Triệu chứng quan sát
+• Các vết đốm, màu sắc, tình trạng cháy/quăn lá.
+
+### 4. Danh mục Thuốc BVTV & Hoạt chất khuyên dùng (Tại Việt Nam)
+• Hoạt chất đặc trị.
+• Tên thương hiệu thuốc BVTV phổ biến ở Việt Nam (Ví dụ: Anvil, Ridomil Gold, Amistar Top,...).
+• Liều lượng và cách dùng.
+
+### 5. Biện pháp khắc phục & Phòng ngừa`;
+
+            // "openrouter/free" tự động kết nối đến mô hình đọc ảnh Free tốt nhất trên OpenRouter
+            const payload = {
+                model: "openrouter/free",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: expertPrompt },
+                            { type: "image_url", image_url: { url: selectedDataUrl } }
+                        ]
+                    }
+                ]
+            };
+
+            try {
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                        "HTTP-Referer": "http://localhost",
+                        "X-Title": "PhyViA Leaf Vision"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('analyzeBtn').disabled = false;
+
+                if (response.ok && data.choices && data.choices[0]) {
+                    const responseText = data.choices[0].message.content;
+                    document.getElementById('statusBadge').innerText = "Phân tích xong";
+                    const outputDiv = document.getElementById('outputContent');
+                    outputDiv.innerHTML = marked.parse(responseText);
+                    outputDiv.classList.remove('hidden');
+                    document.getElementById('copyBtn').classList.remove('hidden');
+                    document.getElementById('pdfBtn').classList.remove('hidden');
+                } else {
+                    const err = data.error ? data.error.message : "Lỗi không xác định";
+                    alert("Lỗi từ OpenRouter API: " + err);
+                }
+            } catch (err) {
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('analyzeBtn').disabled = false;
+                alert("Lỗi kết nối: " + err.message);
+            }
+        }
+
+        function copyResult() {
+            navigator.clipboard.writeText(document.getElementById('outputContent').innerText).then(() => {
+                alert('Đã sao chép kết quả!');
+            });
+        }
+
+        function exportPDF() {
+            const content = document.getElementById('outputContent');
+            const previewImgSrc = document.getElementById('imagePreview').src;
+
+            const pdfWrapper = document.createElement('div');
+            pdfWrapper.style.padding = '20px';
+            pdfWrapper.innerHTML = `
+                <h1 style="color: #065f46; font-size: 18px; font-weight: bold;">BÁO CÁO CHẨN ĐOÁN LÁ CÂY - PHYVIA</h1>
+                <hr style="margin: 10px 0;"/>
+                <img src="${previewImgSrc}" style="max-height: 200px; margin-bottom: 15px;"/>
+                <div>${content.innerHTML}</div>
+            `;
+
+            html2pdf().set({
+                margin: 10,
+                filename: `PhyViA_Report_${Date.now()}.pdf`,
+                html2canvas: { scale: 2 },
+                jsPDF: { format: 'a4', orientation: 'portrait' }
+            }).from(pdfWrapper).save();
+        }
+    </script>
+</body>
+</html>
